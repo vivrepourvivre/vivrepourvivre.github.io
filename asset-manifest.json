@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "/static/css/main.0a60dfa4.css",
-    "main.js": "/static/js/main.cfa69dc1.js",
+    "main.js": "/static/js/main.ce1b68af.js",
     "static/js/787.c96195e8.chunk.js": "/static/js/787.c96195e8.chunk.js",
     "static/media/ic_charger_type_2.svg": "/static/media/ic_charger_type_2.d3c253325ba46fd5c031f1ae992cbe52.svg",
     "static/media/ic_mac_donalds_marker.svg": "/static/media/ic_mac_donalds_marker.d9a262287abf74ceb23490323567365f.svg",
@@ -13,11 +13,11 @@
     "static/media/ic_profile.svg": "/static/media/ic_profile.c4a896fbf6e663e819f8391bb41a081b.svg",
     "static/media/ic_marker.svg": "/static/media/ic_marker.465226f6222676beab0eb815cc6a63f0.svg",
     "main.0a60dfa4.css.map": "/static/css/main.0a60dfa4.css.map",
-    "main.cfa69dc1.js.map": "/static/js/main.cfa69dc1.js.map",
+    "main.ce1b68af.js.map": "/static/js/main.ce1b68af.js.map",
     "787.c96195e8.chunk.js.map": "/static/js/787.c96195e8.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.0a60dfa4.css",
-    "static/js/main.cfa69dc1.js"
+    "static/js/main.ce1b68af.js"
   ]
 }
