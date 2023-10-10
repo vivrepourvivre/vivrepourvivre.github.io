@@ -1,0 +1,23 @@
+{
+  "files": {
+    "main.css": "/static/css/main.5c32cdc9.css",
+    "main.js": "/static/js/main.2a18e3ac.js",
+    "static/js/787.c96195e8.chunk.js": "/static/js/787.c96195e8.chunk.js",
+    "static/media/ic_charger_type_2.svg": "/static/media/ic_charger_type_2.d3c253325ba46fd5c031f1ae992cbe52.svg",
+    "static/media/ic_mac_donalds_marker.svg": "/static/media/ic_mac_donalds_marker.d9a262287abf74ceb23490323567365f.svg",
+    "static/media/ic_charger_type_1.svg": "/static/media/ic_charger_type_1.9021dfb8fade9336e512da08a1c18922.svg",
+    "static/media/ic_help.svg": "/static/media/ic_help.c6bf300d416b2bdf8e29867843ef9ac1.svg",
+    "static/media/ic_plug.svg": "/static/media/ic_plug.cf7d30493b140413a8f6f8b28e1f7932.svg",
+    "static/media/ic_wallet.svg": "/static/media/ic_wallet.28754d615ae40b54783e4619659b7580.svg",
+    "index.html": "/index.html",
+    "static/media/ic_profile.svg": "/static/media/ic_profile.c4a896fbf6e663e819f8391bb41a081b.svg",
+    "static/media/ic_marker.svg": "/static/media/ic_marker.465226f6222676beab0eb815cc6a63f0.svg",
+    "main.5c32cdc9.css.map": "/static/css/main.5c32cdc9.css.map",
+    "main.2a18e3ac.js.map": "/static/js/main.2a18e3ac.js.map",
+    "787.c96195e8.chunk.js.map": "/static/js/787.c96195e8.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.5c32cdc9.css",
+    "static/js/main.2a18e3ac.js"
+  ]
+}
