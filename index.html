@@ -1,14 +1,1781 @@
-<!doctype html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-    <script type="module" crossorigin src="/assets/index-NlFG-Fya.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-EqUoLsNm.css">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Code+Pro&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Yandex Games SDK -->
+    <script src="https://yandex.ru/games/sdk/v2"></script>
+    <link rel="stylesheet" href="./src/index.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./src/modules/three/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import * as TWEEN from "./src/modules/@tweenjs/tween.js/dist/tween.esm.js";
+      import { InteractionManager } from "./src/modules/three.interactive/build/three.interactive.js";
+      import { RenderPass } from "./src/modules/three/examples/jsm/postprocessing/RenderPass.js";
+      import { EffectComposer } from "./src/modules/three/examples/jsm/postprocessing/EffectComposer.js";
+      import { UnrealBloomPass } from "./src/modules/three/examples/jsm/postprocessing/UnrealBloomPass.js";
+
+      YaGames.init().then((ysdk) => {
+        console.log("Yandex SDK initialized");
+        window.ysdk = ysdk;
+      });
+
+      class Field {
+        constructor(type) {
+          this.field = Array.from(Array(10), (x) => Array(10).fill(0));
+
+          this.edgeFill = function (field) {
+            function shuffle(arr) {
+              return arr.sort(() => Math.random() - 0.5);
+            }
+            function func(row, ships) {
+              let shipType = 0;
+              for (let i = 0; i < 10; i++) {
+                if (ships[shipType] === 0) {
+                  shipType++;
+                } else {
+                  field[row][i] = "x";
+                  ships[shipType]--;
+                }
+              }
+            }
+            let ships = [
+              [4, 2, 2],
+              [3, 3, 2],
+            ];
+            shuffle([0, 2]).forEach((e, i) => func(e, shuffle(ships[i])));
+          };
+
+          this.generateRandomField = function (startRow, ships) {
+            let availableCoordinates = new Set();
+
+            for (let i = startRow; i < 10; i++) {
+              for (let j = 0; j < 10; j++) {
+                availableCoordinates.add(String(i) + String(j));
+              }
+            }
+            function func(n) {
+              let currentAvailableCoordinates;
+
+              let orientation = Math.floor(Math.random() * 2);
+
+              if (orientation === 0) {
+                currentAvailableCoordinates = Array.from(availableCoordinates)
+                  .filter((i) => i[1] <= 10 - n)
+                  .filter(function (i) {
+                    for (let a = 0; a < n; a++) {
+                      if (
+                        !availableCoordinates.has(
+                          String(Number(i) + a).padStart(2, "0")
+                        )
+                      ) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  });
+              } else {
+                currentAvailableCoordinates = Array.from(availableCoordinates)
+                  .filter((i) => i[0] <= 10 - n)
+                  .filter(function (i) {
+                    for (let a = 0; a < n * 10; a += 10) {
+                      if (
+                        !availableCoordinates.has(
+                          String(Number(i) + a).padStart(2, "0")
+                        )
+                      ) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  });
+              }
+
+              let randomCoordinates = String(
+                currentAvailableCoordinates[
+                  Math.floor(Math.random() * currentAvailableCoordinates.length)
+                ]
+              ).padStart(2, "0");
+
+              let x = randomCoordinates[0];
+              let y = randomCoordinates[1];
+
+              if (orientation === 0) {
+                for (let i = 0; i < n; i++) {
+                  this.field[x][Number(y) + i] = "x";
+                }
+                for (let i = -1; i <= n; i++) {
+                  let a = Number(randomCoordinates) + i;
+                  let b = Number(randomCoordinates) - 10 + i;
+                  let c = Number(randomCoordinates) + 10 + i;
+                  availableCoordinates.delete(String(a).padStart(2, "0"));
+                  availableCoordinates.delete(String(b).padStart(2, "0"));
+                  availableCoordinates.delete(String(c).padStart(2, "0"));
+                }
+              } else {
+                for (let i = 0; i < n; i++) {
+                  this.field[Number(x) + i][y] = "x";
+                }
+                for (let i = -10; i <= n * 10; i += 10) {
+                  let a = Number(randomCoordinates) + i;
+                  let b = Number(randomCoordinates) + i - 1;
+                  let c = Number(randomCoordinates) + i + 1;
+                  availableCoordinates.delete(String(a).padStart(2, "0"));
+                  availableCoordinates.delete(String(b).padStart(2, "0"));
+                  availableCoordinates.delete(String(c).padStart(2, "0"));
+                }
+              }
+            }
+            let generate = func.bind(this);
+            ships.map((i) => generate(i));
+          };
+          this.shipDestroyed = function (x, y, field = this.field) {
+            let result = true;
+            let emptyCellsArray = [];
+            function searchTop(x, y, field) {
+              if (x - 1 >= 0) {
+                if (field[x - 1][y] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x - 1][y] === 0) {
+                  emptyCellsArray.push([x - 1, y]);
+                  return;
+                }
+                if (field[x - 1][y] === "X") {
+                  searchTop(x - 1, y, field);
+                }
+              } else return;
+            }
+            function searchRight(x, y, field) {
+              if (y + 1 <= 9) {
+                if (field[x][y + 1] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x][y + 1] === 0) {
+                  emptyCellsArray.push([x, y + 1]);
+                  return;
+                }
+                if (field[x][y + 1] === "X") {
+                  searchRight(x, y + 1, field);
+                }
+              } else return;
+            }
+            function searchBottom(x, y, field) {
+              if (x + 1 <= 9) {
+                if (field[x + 1][y] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x + 1][y] === 0) {
+                  emptyCellsArray.push([x + 1, y]);
+                  return;
+                }
+                if (field[x + 1][y] === "X") {
+                  searchBottom(x + 1, y, field);
+                }
+              } else return;
+            }
+            function searchLeft(x, y, field) {
+              if (y - 1 >= 0) {
+                if (field[x][y - 1] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x][y - 1] === 0) {
+                  emptyCellsArray.push([x, y - 1]);
+                  return;
+                }
+                if (field[x][y - 1] === "X") {
+                  searchLeft(x, y - 1, field);
+                }
+              } else return;
+            }
+            searchTop(x, y, field);
+            searchRight(x, y, field);
+            searchBottom(x, y, field);
+            searchLeft(x, y, field);
+            return [result, emptyCellsArray];
+          };
+          this.verify = function (field, x = 0, arrayResult = []) {
+            let fieldCopy = Array.from(Array(10), (x) => Array(10).fill(0));
+            for (let i = 0; i < 10; i++) {
+              for (let j = 0; j < 10; j++) {
+                fieldCopy[i][j] = this.field[i][j];
+              }
+            }
+            function func(field, x = 0, arrayResult = []) {
+              let count = 0;
+              for (let i = 0; i < field.length; i++) {
+                for (let j = 0; j < field[i].length; j++) {
+                  if (i == 0) {
+                    if (field[i][j] === "x" && field[i + 1][j] !== "x") {
+                      if (j > 0 && j < 9) {
+                        if (
+                          field[i + 1][j - 1] !== "x" &&
+                          field[i + 1][j + 1] !== "x"
+                        ) {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 0) {
+                        if (field[i + 1][j + 1] !== "x") {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 9) {
+                        if (field[i + 1][j - 1] !== "x") {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                    }
+                  } else if (i == 9) {
+                    if (field[i][j] === "x" && field[i - 1][j] !== "x") {
+                      if (j > 0 && j < 9) {
+                        if (
+                          field[i - 1][j - 1] !== "x" &&
+                          field[i - 1][j + 1] !== "x"
+                        ) {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 0) {
+                        if (field[i - 1][j + 1] !== "x") {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 9) {
+                        if (field[i - 1][j - 1] !== "x") {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                    }
+                  } else {
+                    if (
+                      field[i][j] === "x" &&
+                      field[i - 1][j] !== "x" &&
+                      field[i + 1][j] !== "x"
+                    ) {
+                      if (j > 0 && j < 9) {
+                        if (
+                          field[i - 1][j - 1] !== "x" &&
+                          field[i + 1][j - 1] !== "x" &&
+                          field[i - 1][j + 1] !== "x" &&
+                          field[i + 1][j + 1] !== "x"
+                        ) {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 0) {
+                        if (
+                          field[i - 1][j + 1] !== "x" &&
+                          field[i + 1][j + 1] !== "x"
+                        ) {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                      if (j == 9) {
+                        if (
+                          field[i - 1][j - 1] !== "x" &&
+                          field[i + 1][j - 1] !== "x"
+                        ) {
+                          field[i][j] = 0;
+                          count++;
+                        } else {
+                          count = 0;
+                        }
+                      }
+                    }
+                  }
+                  if (count > 0 && (j == 9 || field[i][j + 1] !== "x")) {
+                    arrayResult.push(count);
+                    count = 0;
+                  }
+                }
+              }
+              if (x == 0) {
+                return func(this.rotate(field), 1, arrayResult);
+              } else {
+                return (
+                  arrayResult.sort().toString() ==
+                  [1, 1, 1, 1, 2, 2, 2, 3, 3, 4].toString()
+                );
+              }
+            }
+            let fieldVerify = func.bind(this);
+            return fieldVerify(fieldCopy);
+          };
+          this.rotate = function (field, repeat) {
+            let fieldAfterRotate = Array.from(Array(10), (x) =>
+              Array(10).fill(0)
+            );
+            for (let i = 0; i < field.length; i++) {
+              for (let j = 0; j < field[i].length; j++) {
+                fieldAfterRotate[j][field.length - 1 - i] = field[i][j];
+              }
+            }
+            if (repeat) {
+              return this.rotate(fieldAfterRotate, repeat - 1);
+            } else {
+              return fieldAfterRotate;
+            }
+          };
+          this.getEmptyCells = function (x, y) {
+            return [
+              [x - 1, y - 1],
+              [x - 1, y + 1],
+              [x + 1, y - 1],
+              [x + 1, y + 1],
+            ];
+          };
+
+          if (type === "random") {
+            this.generateRandomField(0, [4, 3, 3, 2, 2, 2, 1, 1, 1, 1]);
+          }
+          if (type === "edgeFill") {
+            this.edgeFill(this.field);
+            this.generateRandomField(4, [1, 1, 1, 1]);
+            this.field = this.rotate(this.field, Math.floor(Math.random() * 4));
+          }
+        }
+      }
+
+      class Bot {
+        constructor(fieldEnemy, mode, percent) {
+          if (mode === "percent") {
+            this.shipsCoordinates = [];
+            this.emptyCoordinates = [];
+            (this.parsingField = function () {
+              for (let i = 0; i < 10; i++) {
+                for (let j = 0; j < 10; j++) {
+                  if (fieldEnemy[i][j] === "x") {
+                    this.shipsCoordinates.push([i, j]);
+                  } else {
+                    this.emptyCoordinates.push([i, j]);
+                  }
+                }
+              }
+            }),
+              this.parsingField();
+            this.move = function () {
+              let randomNumber = Math.floor(Math.random() * 100);
+              let randomCoordinates, coordinates;
+              let hit;
+              function getShipsCoordinates() {
+                randomCoordinates = Math.floor(
+                  Math.random() * this.shipsCoordinates.length
+                );
+                coordinates = this.shipsCoordinates[randomCoordinates];
+                if (
+                  this.shipDestroyed(
+                    coordinates[0],
+                    coordinates[1],
+                    fieldEnemy
+                  ) === true
+                ) {
+                  hit = true;
+                } else {
+                  hit = false;
+                }
+                this.shipsCoordinates.splice(randomCoordinates, 1);
+              }
+              function getEmptyCoordinates() {
+                randomCoordinates = Math.floor(
+                  Math.random() * this.emptyCoordinates.length
+                );
+                coordinates = this.emptyCoordinates[randomCoordinates];
+                hit = false;
+                this.emptyCoordinates.splice(randomCoordinates, 1);
+              }
+
+              if (randomNumber <= percent) {
+                getShipsCoordinates.bind(this)();
+              } else {
+                if (this.emptyCoordinates.length === 0) {
+                  getShipsCoordinates.bind(this)();
+                } else {
+                  getEmptyCoordinates.bind(this)();
+                }
+              }
+              return [...coordinates, hit];
+            };
+          } else {
+            this.move = function (field = fieldEnemy) {
+              if (this.firstMove === true) {
+                let arrayCoordinates = Array.from(this.availableCoordinates);
+                let randomCoordinates = [...arrayCoordinates][
+                  Math.floor(Math.random() * arrayCoordinates.length)
+                ].padStart(2, "0");
+                let x = randomCoordinates[0];
+                let y = randomCoordinates[1];
+                if (this.hitsCounter === 20) {
+                  return;
+                }
+
+                if (field[x][y] === "x") {
+                  this.availableCoordinates.delete(String(x) + String(y));
+                  field[x][y] = "X";
+                  if (this.shipDestroyed(Number(x), Number(y)) === true) {
+                    //* Ships die! */
+                    this.hitsCounter++;
+                    this.deleteCoordinates(String(x) + String(y));
+                    return [x, y, true];
+                  } else {
+                    this.hitsCounter++;
+                    this.hits.push(String(x) + String(y));
+                    this.firstMove = false;
+                    return [x, y, false];
+                  }
+                } else {
+                  this.availableCoordinates.delete(String(x) + String(y));
+                  return [x, y];
+                }
+              } else {
+                if (this.knownLocation === false) {
+                  let newX, newY;
+
+                  let currentX = Number(this.hits[0][0]);
+                  let currentY = Number(this.hits[0][1]);
+
+                  if (this.availableDestinations.length === 0) {
+                    if (
+                      currentX - 1 >= 0 &&
+                      this.availableCoordinates.has(
+                        String(currentX - 1) + String(currentY)
+                      )
+                    ) {
+                      this.availableDestinations.push("top");
+                    }
+                    if (
+                      currentX + 1 <= 9 &&
+                      this.availableCoordinates.has(
+                        String(currentX + 1) + String(currentY)
+                      )
+                    ) {
+                      this.availableDestinations.push("bottom");
+                    }
+                    if (
+                      currentY - 1 >= 0 &&
+                      this.availableCoordinates.has(
+                        String(currentX) + String(currentY - 1)
+                      )
+                    ) {
+                      this.availableDestinations.push("left");
+                    }
+                    if (
+                      currentY + 1 <= 9 &&
+                      this.availableCoordinates.has(
+                        String(currentX) + String(currentY + 1)
+                      )
+                    ) {
+                      this.availableDestinations.push("right");
+                    }
+                  }
+
+                  this.availableDestinations.sort(() => Math.random() - 0.5);
+
+                  if (this.availableDestinations[0] === "top") {
+                    newX = currentX - 1;
+                    newY = currentY;
+                  }
+
+                  if (this.availableDestinations[0] === "bottom") {
+                    newX = currentX + 1;
+                    newY = currentY;
+                  }
+
+                  if (this.availableDestinations[0] === "left") {
+                    newX = currentX;
+                    newY = currentY - 1;
+                  }
+
+                  if (this.availableDestinations[0] === "right") {
+                    newX = currentX;
+                    newY = currentY + 1;
+                  }
+
+                  this.availableDestinations.shift();
+
+                  this.availableCoordinates.delete(String(newX) + String(newY));
+
+                  if (field[newX][newY] === "x") {
+                    field[newX][newY] = "X";
+                    if (this.shipDestroyed(newX, newY) === true) {
+                      this.firstMove = true;
+                      this.hits.push(String(newX) + String(newY));
+                      this.hits.forEach((i) => {
+                        this.deleteCoordinates(i);
+                      });
+                      this.hits = [];
+                      this.availableDestinations = [];
+                      this.hitsCounter++;
+                      return [newX, newY, true];
+                    } else {
+                      this.hitsCounter++;
+                      if (newX != String(this.hits[0])[0]) {
+                        this.location = "vertical";
+                      }
+                      if (newY != String(this.hits[0])[1]) {
+                        this.location = "horizontal";
+                      }
+                      this.hits.push(String(newX) + String(newY));
+                      this.knownLocation = true;
+                      return [newX, newY, false];
+                    }
+                  } else {
+                    return [newX, newY];
+                  }
+                } else {
+                  let newX, newY;
+
+                  let lastX, lastY;
+
+                  lastX = String(this.hits[this.hits.length - 1])[0];
+                  lastY = String(this.hits[this.hits.length - 1])[1];
+                  let bottom, top, left, right;
+
+                  if (this.location === "vertical") {
+                    bottom = Math.min(...this.hits) - 10;
+                    top = Math.max(...this.hits) + 10;
+                    newY = lastY;
+                    if (bottom >= 10) {
+                      if (
+                        String(bottom)[0] >= 0 &&
+                        this.availableCoordinates.has(String(bottom))
+                      ) {
+                        newX = String(bottom)[0];
+                      } else {
+                        newX = String(top)[0];
+                      }
+                    } else {
+                      if (
+                        String(bottom)[0] >= 0 &&
+                        this.availableCoordinates.has(
+                          String(0) + String(bottom)
+                        )
+                      ) {
+                        newX = 0;
+                      } else {
+                        newX = String(top)[0];
+                      }
+                    }
+                  }
+
+                  if (this.location === "horizontal") {
+                    left = Math.min(...this.hits) - 1;
+                    right = Math.max(...this.hits) + 1;
+                    newX = lastX;
+                    if (left >= 10) {
+                      if (
+                        String(left)[1] != 9 &&
+                        this.availableCoordinates.has(String(left))
+                      ) {
+                        newY = String(left)[1];
+                      } else {
+                        newY = String(right)[1];
+                      }
+                    } else {
+                      if (
+                        String(left)[0] != 9 &&
+                        this.availableCoordinates.has(String(0) + String(left))
+                      ) {
+                        newY = String(left)[0];
+                      } else {
+                        newY = String(right)[0];
+                      }
+                    }
+                  }
+
+                  this.availableCoordinates.delete(String(newX) + String(newY));
+
+                  if (field[newX][newY] === "x") {
+                    field[newX][newY] = "X";
+                    if (
+                      this.shipDestroyed(Number(newX), Number(newY), field) ===
+                      true
+                    ) {
+                      this.firstMove = true;
+                      this.hits.push(String(newX) + String(newY));
+                      this.hits.forEach((i) => this.deleteCoordinates(i));
+                      this.hits = [];
+                      this.availableDestinations = [];
+                      this.knownLocation = false;
+                      this.location = "";
+                      this.hitsCounter++;
+                      return [newX, newY, true];
+                    } else {
+                      this.hits.push(String(newX) + String(newY));
+                      this.hitsCounter++;
+                      return [newX, newY, false];
+                    }
+                  } else {
+                    return [newX, newY];
+                  }
+                }
+              }
+            };
+          }
+          this.availableCoordinatesInitialize = function () {
+            let coordinates = new Set();
+            for (let i = 0; i < 10; i++) {
+              for (let j = 0; j < 10; j++) {
+                coordinates.add(String(i) + String(j));
+              }
+            }
+            return coordinates;
+          };
+          this.availableCoordinates = this.availableCoordinatesInitialize();
+          this.deleteCoordinates = function (coordinates) {
+            for (let i = -1; i <= 1; i++) {
+              this.availableCoordinates.delete(
+                String(Number(coordinates) + i).padStart(2, "0")
+              );
+              this.availableCoordinates.delete(
+                String(Number(coordinates) + i - 10).padStart(2, "0")
+              );
+              this.availableCoordinates.delete(
+                String(Number(coordinates) + i + 10).padStart(2, "0")
+              );
+            }
+          };
+          this.shipDestroyed = function (x, y, field = fieldEnemy) {
+            let result = true;
+            function searchTop(x, y, field) {
+              if (x - 1 >= 0) {
+                if (field[x - 1][y] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x - 1][y] === 0) {
+                  return;
+                }
+                if (field[x - 1][y] === "X") {
+                  searchTop(x - 1, y, field);
+                }
+              } else return;
+            }
+            function searchRight(x, y, field) {
+              if (y + 1 <= 9) {
+                if (field[x][y + 1] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x][y + 1] === 0) {
+                  return;
+                }
+                if (field[x][y + 1] === "X") {
+                  searchRight(x, y + 1, field);
+                }
+              } else return;
+            }
+            function searchBottom(x, y, field) {
+              if (x + 1 <= 9) {
+                if (field[x + 1][y] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x + 1][y] === 0) {
+                  return;
+                }
+                if (field[x + 1][y] === "X") {
+                  searchBottom(x + 1, y, field);
+                }
+              } else return;
+            }
+            function searchLeft(x, y, field) {
+              if (y - 1 >= 0) {
+                if (field[x][y - 1] === "x") {
+                  result = false;
+                  return;
+                }
+                if (field[x][y - 1] === 0) {
+                  return;
+                }
+                if (field[x][y - 1] === "X") {
+                  searchLeft(x, y - 1, field);
+                }
+              } else return;
+            }
+            searchTop(x, y, field);
+            searchRight(x, y, field);
+            searchBottom(x, y, field);
+            searchLeft(x, y, field);
+            return result;
+          };
+          this.availableDestinations = [];
+          this.knownLocation = false;
+          this.location = "";
+          this.hits = [];
+          this.hitsCounter = 0;
+          this.firstMove = true;
+        }
+      }
+      let gameActive;
+      let twoPlayers;
+      let historyWindowActive = false;
+      let restartWindowActive = false;
+      let soundMode = true;
+      let soundAssistant = true;
+      let emptyCellsDeleteMode = false;
+      let placementMode = false;
+      let yourMoveAssistant = true;
+      let dictonaryOfCoordinates = {
+        0: "А",
+        1: "Б",
+        2: "В",
+        3: "Г",
+        4: "Д",
+        5: "Е",
+        6: "Ж",
+        7: "З",
+        8: "И",
+        9: "К",
+      };
+
+      globalSettings.onclick = function (event) {
+        event.stopPropagation();
+        document.getElementById("botSettingsWindow").classList.add("escape");
+        setTimeout(() => {
+          document.getElementById("botSettingsWindow").style.display = "none";
+          document
+            .getElementById("botSettingsWindow")
+            .classList.remove("escape");
+          document.getElementById("globalSettingsWindow").style.display =
+            "flex";
+        }, 10);
+      };
+
+      botSettings.onclick = function (event) {
+        event.stopPropagation();
+        document.getElementById("globalSettingsWindow").classList.add("escape");
+        setTimeout(() => {
+          document.getElementById("globalSettingsWindow").style.display =
+            "none";
+          document
+            .getElementById("globalSettingsWindow")
+            .classList.remove("escape");
+          document.getElementById("botSettingsWindow").style.display = "flex";
+        }, 10);
+      };
+
+      buttonMusic.onclick = function () {
+        if (soundMode === true && soundAssistant === true) {
+          soundMode = false;
+          buttonMusic__image.src = "./src/img/soundOff.svg";
+        } else {
+          soundMode = true;
+          buttonMusic__image.src = "./src/img/soundOn.svg";
+        }
+      };
+
+      function notification(message) {
+        document.getElementById("notice").classList.remove("notification");
+        document
+          .getElementById("notice")
+          .classList.remove("notification-start");
+        document.getElementById("notice").classList.remove("animated");
+        document.getElementById("notice").classList.remove("notification-none");
+        document.getElementById("notice").offsetWidth;
+        document.getElementById("notice").classList.add("notification-start");
+        document.getElementById("notice").classList.add("notification");
+        setTimeout(() => {
+          document
+            .getElementById("notice")
+            .classList.remove("notification-start");
+          document.getElementById("notice").classList.add("animated");
+        }, 250);
+        document.getElementById("notificationText").innerHTML = `${message}`;
+      }
+
+      function notificationWithoutAnimation(message) {
+        document.getElementById("notice").classList.remove("notification");
+        document
+          .getElementById("notice")
+          .classList.remove("notification-start");
+        document.getElementById("notice").classList.remove("animated");
+        document.getElementById("notice").classList.remove("notification-none");
+        document.getElementById("notice").offsetWidth;
+        document.getElementById("notice").classList.add("notification-start");
+        document.getElementById("notice").classList.add("notification");
+        document.getElementById("notificationText").innerHTML = `${message}`;
+      }
+
+      submit.onclick = function () {
+        gameActive = true;
+        globalSettingsWindow.style.display = "none";
+        container.style.display = "none";
+        notice.style.display = "flex";
+        wrapper__playerStat.style.display = "flex";
+        wrapper__botStat.style.display = "flex";
+        botStat.innerHTML = `20/20`;
+        playerStat.innerHTML = `20/20`;
+        restart.style.display = "none";
+        buttonRestart.style.display = "flex";
+        buttonRestart__image.src = "./src/img/restart.svg";
+
+        buttonRestart.onclick = function () {
+          document.getElementById("history").style.display = "none";
+          buttonHistory__image.src = "./src/img/history.svg";
+          historyWindowActive = false;
+          if (!restartWindowActive) {
+            buttonRestart__image.src = "./src/img/close.svg";
+            restart.style.display = "flex";
+            restart.classList.add("open");
+            restartWindowActive = true;
+          } else {
+            buttonRestart__image.src = "./src/img/restart.svg";
+            restart.classList.add("escape");
+            setTimeout(() => {
+              restart.style.display = "none";
+              restart.classList.remove("escape");
+            }, 250);
+            restartWindowActive = false;
+          }
+        };
+
+        restartOff.onclick = function () {
+          buttonRestart__image.src = "./src/img/restart.svg";
+          restart.classList.add("escape");
+          setTimeout(() => {
+            restart.style.display = "none";
+            restart.classList.remove("escape");
+          }, 250);
+          restartWindowActive = false;
+        };
+
+        restartOn.onclick = function () {
+          document.body.style.cursor = "default";
+          buttonRestart.src = "./src/img/restart.svg";
+          restart.classList.add("escape");
+          setTimeout(() => {
+            restart.style.display = "none";
+            restart.classList.remove("escape");
+            newGame();
+          }, 250);
+          restartWindowActive = false;
+        };
+
+        function newGame() {
+          document.getElementById("hud").style.display = "flex";
+          gameActive = false;
+          globalSettingsWindow.style.display = "flex";
+          container.style.display = "flex";
+          buttonRestart.style.display = "none";
+          notice.style.display = "none";
+          history__wrapper.innerHTML = "";
+          buttonHistory.style.display = "none";
+          scene.remove.apply(scene, scene.children);
+          bot = null;
+          botAction = null;
+          player = null;
+          interactionManager = null;
+          yourMoveAssistant = true;
+          placementMode = false;
+        }
+
+        function getFormattedDate() {
+          return (
+            String(new Date().getHours()).padStart(2, 0) +
+            ":" +
+            String(new Date().getMinutes()).padStart(2, 0) +
+            ":" +
+            String(new Date().getSeconds()).padStart(2, 0)
+          );
+        }
+
+        function historyAddEntry(entry) {
+          buttonHistory.style.display = "flex";
+          buttonHistory.onclick = function () {
+            const historyWindow = document.getElementById("history");
+            restart.style.display = "none";
+            restartWindowActive = false;
+            buttonRestart__image.src = "./src/img/restart.svg";
+            if (!historyWindowActive) {
+              historyWindowActive = true;
+              buttonHistory__image.src = "./src/img/close.svg";
+              historyWindow.style.display = "flex";
+              historyWindow.classList.add("open");
+              history__wrapper.scrollTop = history__wrapper.scrollHeight;
+            } else {
+              buttonHistory__image.src = "./src/img/history.svg";
+              historyWindow.classList.add("escape");
+              setTimeout(() => {
+                historyWindow.style.display = "none";
+                historyWindow.classList.remove("escape");
+              }, 250);
+              historyWindowActive = false;
+            }
+          };
+          history__wrapper.innerHTML += `<p>${entry}</p>`;
+          history__wrapper.scrollTop = history__wrapper.scrollHeight;
+        }
+
+        let renderer = new THREE.WebGLRenderer({
+          alpha: true,
+          canvas: document.getElementById("game"),
+        });
+        renderer.setClearColor(0x000000);
+        let scene = new THREE.Scene();
+        let camera = new THREE.OrthographicCamera(0, 0, 0, 0, 0, 10);
+        renderer.domElement.clientHeight / renderer.domElement.clientWidth;
+        renderer.setSize(
+          renderer.domElement.clientWidth * 2,
+          renderer.domElement.clientHeight * 2,
+          false
+        );
+        function adaptive() {
+          let aspect =
+            renderer.domElement.clientHeight / renderer.domElement.clientWidth;
+          if (aspect <= 0.75) {
+            camera.zoom = 1.2;
+            camera.top = 1.85;
+            camera.bottom = -2.15;
+            camera.left = -2.1 / aspect;
+            camera.right = 1.9 / aspect;
+          } else {
+            camera.zoom = 1.1;
+            camera.top = 1.9 * aspect;
+            camera.bottom = -2.1 * aspect;
+            camera.left = -2.175;
+            camera.right = 1.825;
+          }
+        }
+        adaptive();
+        camera.position.set(1, 2, 1);
+        camera.updateProjectionMatrix();
+        camera.lookAt(new THREE.Vector3(0, 0.75, 0));
+        scene.add(camera);
+        const renderScene = new RenderPass(scene, camera);
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        const bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(1, 1),
+          0.5,
+          0.1,
+          0.1
+        );
+        composer.addPass(bloomPass);
+        bloomPass.strength = 0.4;
+        bloomPass.radius = 5;
+        bloomPass.threshold = 0.1;
+        const color = 0xffffff;
+        const intensity = 0.3;
+        const light = new THREE.DirectionalLight(color, intensity);
+        light.position.set(0, 10, 0);
+        light.target.position.set(-5, 0, 0);
+        scene.add(light);
+        scene.add(light.target);
+        const lightSecond = new THREE.DirectionalLight(color, intensity);
+        lightSecond.position.set(-5, 10, 20);
+        lightSecond.target.position.set(-5, 0, 0);
+        scene.add(lightSecond);
+        scene.add(lightSecond.target);
+
+        let interactionManager = new InteractionManager(
+          renderer,
+          camera,
+          renderer.domElement
+        );
+
+        let player;
+        let bot;
+        let botAction;
+        let choiceCount = 0;
+        let counterEnemy = 0;
+        let counterPlayer = 0;
+        let move = true;
+
+        if (!emptyCells.checked) {
+          emptyCellsDeleteMode = true;
+        } else {
+          emptyCellsDeleteMode = false;
+        }
+
+        if (!randomPlacement.checked) {
+          if (!typeRandomPlacement.checked) {
+            player = new Field("random");
+          } else {
+            player = new Field("edgeFill");
+          }
+          if (!firstMove.checked) {
+            camera.position.set(1.5, 7.1175, 1);
+            notificationWithoutAnimation(`Ваш ход!`);
+          } else {
+            move = false;
+            camera.position.set(1.5, 2.5, 1);
+            notificationWithoutAnimation(`Ход противника.`);
+          }
+        } else {
+          placementMode = true;
+          player = new Field();
+          camera.position.set(1.5, 2.5, 1);
+          notificationWithoutAnimation("Расставьте корабли.");
+        }
+
+        if (!typeBotPlacement.checked) {
+          bot = new Field("random");
+        } else {
+          bot = new Field("edgeFill");
+        }
+
+        if (botType.checked) {
+          if (!randomPlacement.checked) {
+            botAction = new Bot(player.field, "percent", percentOfHits.value);
+          }
+        } else {
+          botAction = new Bot(player.field);
+        }
+
+        if (firstMove.checked && !randomPlacement.checked && !twoPlayers) {
+          setTimeout(() => {
+            botMove();
+          }, 2000);
+        }
+
+        function botMove() {
+          if (!gameActive) {
+            return;
+          }
+          yourMoveAssistant = true;
+          let coordinates = botAction.move();
+          let hit = false;
+          if (botType.checked) {
+            if (player.field[coordinates[0]][coordinates[1]] === "x") {
+              player.field[coordinates[0]][coordinates[1]] = "X";
+              hit = true;
+            }
+          } else {
+            if (player.field[coordinates[0]][coordinates[1]] === "X") {
+              hit = true;
+            }
+          }
+          if (hit) {
+            counterEnemy++;
+            scene.remove(cubes["" + coordinates[1] + coordinates[0]]);
+            if (
+              !botType.checked &&
+              !typeBotPlacement.checked &&
+              emptyCellsDeleteMode
+            ) {
+              bot
+                .getEmptyCells(Number(coordinates[0]), Number(coordinates[1]))
+                .map((i) => {
+                  return scene.remove(cubes["" + i[1] + i[0]]);
+                });
+            }
+            if (counterEnemy === 20) {
+              document.getElementById("playerStat").innerHTML = `${
+                20 - counterEnemy
+              }/20`;
+              if (soundMode === true && soundAssistant === true) {
+                new Audio("./src/audio/lose.mp3").play();
+              }
+              notificationWithoutAnimation(`Вы проиграли.`);
+              historyAddEntry(
+                `${getFormattedDate()} Вы проиграли (${
+                  dictonaryOfCoordinates[coordinates[0]] +
+                  (Number(coordinates[1]) + 1)
+                }).`
+              );
+              setTimeout(
+                () => (document.getElementById("hud").style.display = "none"),
+                1500
+              );
+              setTimeout(() => {
+                YaGames.init().then((ysdk) =>
+                  ysdk.adv.showFullscreenAdv({
+                    callbacks: {
+                      onClose: function (wasShown) {
+                        newGame();
+                      },
+                      onError: function (error) {
+                        newGame();
+                      },
+                      onOffline: function (e) {
+                        newGame();
+                      },
+                    },
+                  })
+                );
+              }, 3000);
+            } else {
+              document.getElementById("playerStat").innerHTML = `${
+                20 - counterEnemy
+              }/20`;
+              if (
+                (!botType.checked && coordinates[2] === true) ||
+                (botType.checked &&
+                  player.shipDestroyed(
+                    Number(coordinates[0]),
+                    Number(coordinates[1]),
+                    player.field
+                  )[0] === true)
+              ) {
+                notification(`Противник потопил ваш корабль!`);
+                historyAddEntry(
+                  `${getFormattedDate()} Противник потопил ваш корабль (${
+                    dictonaryOfCoordinates[coordinates[0]] +
+                    (Number(coordinates[1]) + 1)
+                  }).`
+                );
+                if (
+                  !botType.checked &&
+                  !typeBotPlacement.checked &&
+                  emptyCellsDeleteMode
+                ) {
+                  player
+                    .shipDestroyed(
+                      Number(coordinates[0]),
+                      Number(coordinates[1]),
+                      player.field
+                    )[1]
+                    .map((i) => {
+                      scene.remove(cubes["" + i[1] + i[0]]);
+                    });
+                }
+                if (soundMode === true && soundAssistant === true) {
+                  new Audio("./src/audio/destroyed.mp3").play();
+                }
+              } else {
+                notification(`Противник попал!`);
+                historyAddEntry(
+                  `${getFormattedDate()} Противник попал (${
+                    dictonaryOfCoordinates[coordinates[0]] +
+                    (Number(coordinates[1]) + 1)
+                  }).`
+                );
+                if (soundMode === true && soundAssistant === true) {
+                  new Audio("./src/audio/hit.mp3").play();
+                }
+              }
+              setTimeout(() => {
+                botMove();
+              }, 1000);
+            }
+          } else {
+            scene.remove(cubes["" + coordinates[1] + coordinates[0]]);
+            notification(`Противник промахнулся.`);
+            historyAddEntry(
+              `${getFormattedDate()} Противник промахнулся (${
+                dictonaryOfCoordinates[coordinates[0]] +
+                (Number(coordinates[1]) + 1)
+              }).`
+            );
+            if (soundMode === true && soundAssistant === true) {
+              new Audio("./src/audio/miss.mp3").play();
+            }
+            movingToPlayer.start();
+            move = true;
+            setTimeout(() => {
+              if (yourMoveAssistant) {
+                notificationWithoutAnimation(`Ваш ход!`);
+              }
+            }, 3000);
+          }
+        }
+
+        if (soundMode === true && soundAssistant === true) {
+          new Audio("./src/audio/start.mp3").play();
+        }
+
+        let cubes = {};
+        let cubesEnemy = {};
+        let cubesEnemyCollision = {};
+
+        let x = -1;
+
+        for (let i = 0; i < 10; i++) {
+          x += 0.24;
+          let y = -1.25;
+
+          for (let j = 0; j < 10; j++) {
+            y += 0.24;
+
+            let coordinateX = x;
+            let coordinateZ = y;
+
+            let a = 0x00ff00;
+
+            cubesEnemy["" + i + j] = new THREE.Mesh(
+              new THREE.BoxGeometry(0.2, 0.2, 0.2),
+              new THREE.MeshPhongMaterial({
+                color: a,
+              })
+            );
+
+            cubesEnemy["" + i + j].position.set(x - 2.5, 2.5, y - 2.5);
+
+            cubesEnemyCollision["" + i + j] = new THREE.Mesh(
+              new THREE.BoxGeometry(0.2, 0.2, 0.2),
+              new THREE.MeshPhongMaterial({
+                color: a,
+                transparent: true,
+                opacity: 0,
+              })
+            );
+
+            cubesEnemyCollision["" + i + j].position.set(
+              x - 2.5,
+              2.51,
+              y - 2.5
+            );
+
+            let animationOver = new TWEEN.Tween({
+              x: coordinateX - 2.5,
+              y: 2.5,
+              z: coordinateZ - 2.5,
+            })
+              .to({ x: coordinateX - 2.5, y: 2.4, z: coordinateZ - 2.5 }, 250)
+              .onUpdate((coords) => {
+                cubesEnemy["" + i + j].position.set(
+                  coords.x,
+                  coords.y,
+                  coords.z
+                );
+              })
+              .easing(TWEEN.Easing.Back.InOut);
+
+            let animationOut = new TWEEN.Tween({
+              x: coordinateX - 2.5,
+              y: 2.4,
+              z: coordinateZ - 2.5,
+            })
+              .to({ x: coordinateX - 2.5, y: 2.5, z: coordinateZ - 2.5 }, 250)
+              .onUpdate((coords) => {
+                cubesEnemy["" + i + j].position.set(
+                  coords.x,
+                  coords.y,
+                  coords.z
+                );
+              })
+              .easing(TWEEN.Easing.Back.InOut);
+
+            interactionManager.add(cubesEnemyCollision["" + i + j]);
+
+            cubesEnemyCollision["" + i + j].addEventListener(
+              "click",
+              (event) => {
+                if (!twoPlayers) {
+                  event.stopPropagation();
+                  if (move === true) {
+                    yourMoveAssistant = false;
+                    if (bot.field[j][i] === "x") {
+                      bot.field[j][i] = "X";
+                      counterPlayer++;
+                      cubesEnemy["" + i + j].material.color.set(0xffffff);
+                      if (emptyCellsDeleteMode) {
+                        player.getEmptyCells(j, i).map((i) => {
+                          interactionManager.remove(
+                            cubesEnemyCollision["" + i[1] + i[0]]
+                          );
+                          scene.remove(cubesEnemy["" + i[1] + i[0]]);
+                        });
+                      }
+                      if (counterPlayer === 20) {
+                        document.getElementById("botStat").innerHTML = `${
+                          20 - counterPlayer
+                        }/20`;
+                        move = false;
+                        if (soundMode === true && soundAssistant === true) {
+                          new Audio("./src/audio/win.mp3").play();
+                        }
+                        player.shipDestroyed(j, i, bot.field)[1].map((i) => {
+                          scene.remove(cubesEnemy["" + i[1] + i[0]]);
+                        });
+                        animationOut.start();
+                        notificationWithoutAnimation(`Вы выиграли!`);
+                        setTimeout(
+                          () =>
+                            (document.getElementById("hud").style.display =
+                              "none"),
+                          1500
+                        );
+                        setTimeout(() => {
+                          YaGames.init().then((ysdk) =>
+                            ysdk.adv.showFullscreenAdv({
+                              callbacks: {
+                                onClose: function (wasShown) {
+                                  newGame();
+                                },
+                                onError: function (error) {
+                                  newGame();
+                                },
+                                onOffline: function (e) {
+                                  newGame();
+                                },
+                              },
+                            })
+                          );
+                        }, 3000);
+                      } else {
+                        document.getElementById("botStat").innerHTML = `${
+                          20 - counterPlayer
+                        }/20`;
+                        if (player.shipDestroyed(j, i, bot.field)[0] === true) {
+                          if (soundMode === true && soundAssistant === true) {
+                            new Audio("./src/audio/destroyed.mp3").play();
+                          }
+                          if (emptyCellsDeleteMode) {
+                            player
+                              .shipDestroyed(j, i, bot.field)[1]
+                              .map((i) => {
+                                interactionManager.remove(
+                                  cubesEnemyCollision["" + i[1] + i[0]]
+                                );
+                                scene.remove(cubesEnemy["" + i[1] + i[0]]);
+                              });
+                          }
+                          notification(`Вы потопили корабль противника!`);
+                          historyAddEntry(
+                            `${getFormattedDate()} Вы потопили корабль противника (${
+                              dictonaryOfCoordinates[j] + (i + 1)
+                            })!`
+                          );
+                        } else {
+                          if (soundMode === true && soundAssistant === true) {
+                            new Audio("./src/audio/hit.mp3").play();
+                          }
+                          notification(`Вы попали в корабль противника.`);
+                          historyAddEntry(
+                            `${getFormattedDate()} Вы попали в корабль противника (${
+                              dictonaryOfCoordinates[j] + (i + 1)
+                            }).`
+                          );
+                        }
+                      }
+                    } else if (bot.field[j][i] === 0) {
+                      move = false;
+                      if (soundMode === true && soundAssistant === true) {
+                        new Audio("./src/audio/miss.mp3").play();
+                      }
+                      notification(`Вы промахнулись.`);
+                      historyAddEntry(
+                        `${getFormattedDate()} Вы промахнулись (${
+                          dictonaryOfCoordinates[j] + (i + 1)
+                        }).`
+                      );
+                      scene.remove(cubesEnemy["" + i + j]);
+                      movingToEnemy.start();
+                      setTimeout(() => {
+                        botMove();
+                      }, 3250);
+                    }
+                    interactionManager.remove(cubesEnemyCollision["" + i + j]);
+                  }
+                }
+              }
+            );
+
+            cubesEnemyCollision["" + i + j].addEventListener(
+              "mouseover",
+              function (event) {
+                event.stopPropagation();
+                if (move === true) {
+                  animationOver.start();
+                  setTimeout(
+                    () =>
+                      cubesEnemy["" + i + j].position.set(
+                        coordinateX - 2.5,
+                        2.4,
+                        coordinateZ - 2.5
+                      ),
+                    250
+                  );
+                  document.body.style.cursor = "pointer";
+                }
+              }
+            );
+
+            cubesEnemyCollision["" + i + j].addEventListener(
+              "mouseout",
+              function (event) {
+                document.body.style.cursor = "default";
+                event.stopPropagation();
+                if (move === true) {
+                  setTimeout(
+                    () =>
+                      cubesEnemy["" + i + j].position.set(
+                        coordinateX - 2.5,
+                        2.5,
+                        coordinateZ - 2.5
+                      ),
+                    250
+                  );
+                  setTimeout(() => animationOut.start(), 5);
+                }
+              }
+            );
+
+            scene.add(cubesEnemyCollision["" + i + j]);
+            scene.add(cubesEnemy["" + i + j]);
+            interactionManager.add(cubesEnemy["" + i + j]);
+            scene.add(cubesEnemy["" + i + j]);
+            interactionManager.add(cubesEnemy["" + i + j]);
+            cubes["" + i + j] = new THREE.Mesh(
+              new THREE.BoxGeometry(0.2, 0.2, 0.2),
+              new THREE.MeshPhongMaterial({ color: a })
+            );
+            cubes["" + i + j].position.set(x, 1, y);
+            scene.add(cubes["" + i + j]);
+            interactionManager.add(cubes["" + i + j]);
+
+            cubes["" + i + j].addEventListener("mouseover", function (event) {
+              event.stopPropagation();
+              if (placementMode === true) {
+                if (player.field[j][i] !== "x" && choiceCount < 20) {
+                  document.body.style.cursor = "pointer";
+                  cubes["" + i + j].material.color.set(0x33cc33);
+                } else if (player.field[j][i] === "x") {
+                  document.body.style.cursor = "pointer";
+                  cubes["" + i + j].material.color.set(0xc8c8c8);
+                }
+              }
+            });
+
+            cubes["" + i + j].addEventListener("mouseout", function (event) {
+              event.stopPropagation();
+              if (placementMode === true) {
+                document.body.style.cursor = "default";
+                if (player.field[j][i] === "x") {
+                  cubes["" + i + j].material.color.set(0xffffff);
+                } else {
+                  cubes["" + i + j].material.color.set(0x00ff00);
+                }
+              }
+            });
+
+            cubes["" + i + j].addEventListener("click", (event) => {
+              if (randomPlacement.checked && placementMode === true) {
+                let a = 0xffffff;
+                let b = 0x00ff00;
+                function remainingCells(choiceCount) {
+                  let remaining = 20 - choiceCount;
+                  if (remaining > 4) {
+                    return `Осталось ${remaining} клеток`;
+                  } else if (remaining <= 4 && remaining > 1) {
+                    return `Осталось ${remaining} клетки`;
+                  } else {
+                    return `Осталась ${remaining} клетка`;
+                  }
+                }
+                if (player.field[j][i] === 0 && choiceCount < 20) {
+                  choiceCount++;
+                  notification(remainingCells(choiceCount));
+                  player.field[j][i] = "x";
+                  cubes["" + i + j].material.color.set(a);
+                } else if (player.field[j][i] === "x") {
+                  choiceCount--;
+                  notification(remainingCells(choiceCount));
+                  player.field[j][i] = 0;
+                  cubes["" + i + j].material.color.set(b);
+                }
+                if (choiceCount === 20) {
+                  if (player.verify(player.field) == true) {
+                    document.body.style.cursor = "default";
+                    placementMode = false;
+                    notification(`Карта заполнена верно.`);
+                    if (botType.checked) {
+                      botAction = new Bot(
+                        player.field,
+                        "percent",
+                        percentOfHits.value
+                      );
+                    }
+                    if (!twoPlayers && !firstMove.checked) {
+                      movingToPlayer.start();
+                      setTimeout(() => {
+                        if (yourMoveAssistant) {
+                          notificationWithoutAnimation(`Ваш ход!`);
+                        }
+                      }, 3000);
+                    }
+                    if (!twoPlayers && firstMove.checked) {
+                      setTimeout(() => {
+                        notificationWithoutAnimation(`Ход противника.`);
+                      }, 1000);
+                      setTimeout(() => {
+                        botMove();
+                      }, 2000);
+                    }
+                  } else {
+                    notificationWithoutAnimation(
+                      `Карта заполнена неправильно. Чтобы отменить выбор, нажмите на кубик ещё раз.`
+                    );
+                  }
+                }
+                event.stopPropagation();
+              }
+            });
+
+            if (!randomPlacement.checked && player.field[j][i] === "x") {
+              a = 0xffffff;
+              cubes["" + i + j].material.color.set(a);
+            }
+          }
+        }
+
+        let movingToPlayer = new TWEEN.Tween({ x: 1.5, y: 2.5, z: 1 })
+          .to({ x: 1.5, y: 7.1175, z: 1 }, 3000)
+          .onUpdate((coords) => {
+            camera.position.set(coords.x, coords.y, coords.z);
+          })
+          .easing(TWEEN.Easing.Back.InOut);
+
+        let movingToEnemy = new TWEEN.Tween({ x: 1.5, y: 7.1175, z: 1 })
+          .to({ x: 1.5, y: 2.5, z: 1 }, 3000)
+          .onUpdate((coords) => {
+            camera.position.set(coords.x, coords.y, coords.z);
+          })
+          .easing(TWEEN.Easing.Back.InOut);
+
+        function resizeRendererToDisplaySize(renderer) {
+          const canvas = renderer.domElement;
+          const pixelRatio = window.devicePixelRatio;
+          const width = (renderer.domElement.clientWidth * pixelRatio) | 0;
+          const height = (renderer.domElement.clientHeight * pixelRatio) | 0;
+          const needResize = canvas.width !== width || canvas.height !== height;
+          if (needResize) {
+            adaptive();
+            camera.updateProjectionMatrix();
+          }
+          return needResize;
+        }
+
+        const animate = (time) => {
+          if (gameActive) {
+            interactionManager.update();
+            TWEEN.update(time);
+            resizeRendererToDisplaySize(renderer);
+            renderer.render(scene, camera);
+            composer.render();
+            requestAnimationFrame(animate);
+          }
+        };
+
+        animate();
+
+        document.addEventListener(
+          "visibilitychange",
+          () => {
+            if (document.visibilityState === "visible") {
+              if (move === true && placementMode === false) {
+                camera.position.set(1.5, 7.1175, 1);
+                camera.updateProjectionMatrix();
+              } else {
+                camera.position.set(1.5, 2.5, 1);
+                camera.updateProjectionMatrix();
+              }
+              soundAssistant = true;
+            } else {
+              soundAssistant = false;
+              movingToPlayer.stop();
+              movingToEnemy.stop();
+            }
+          },
+          false
+        );
+      };
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div class="notification animated notification-none" id="notice">
+      <p id="notificationText"></p>
+    </div>
+    <p id="coordinates"></p>
+    <div class="hud" id="hud">
+      <div id="wrapper__playerStat" class="stat">
+        <img src="./src/img/human.svg" />
+        <p id="playerStat">20/20</p>
+      </div>
+      <div id="buttonMusic" class="button">
+        <img id="buttonMusic__image" src="./src/img/soundOn.svg" />
+      </div>
+      <div id="buttonHistory" class="button">
+        <img id="buttonHistory__image" src="./src/img/history.svg" />
+      </div>
+      <div id="buttonRestart" class="button">
+        <img id="buttonRestart__image" src="./src/img/restart.svg" />
+      </div>
+      <div id="wrapper__botStat" class="stat">
+        <img src="./src/img/bot.svg" />
+        <p id="botStat">20/20</p>
+      </div>
+    </div>
+    <div id="history" class="">
+      <div id="history__wrapper" class="scrolled styled-scrollbars"></div>
+    </div>
+    <div id="restart" class="">
+      <p>Начать новую игру?</p>
+      <div class="wrapper">
+        <button id="restartOff">Нет</button>
+        <button id="restartOn" class="green">Да</button>
+      </div>
+    </div>
+    <div class="container blur" id="container">
+      <div class="row">
+        <div id="globalSettingsWindow">
+          <div class="title">
+            <p>Настройки новой игры</p>
+            <p><span class="gray">Морской бой «Матрица»</span></p>
+          </div>
+          <p class="subtitle">Расстановка кораблей</p>
+          <input
+            type="checkbox"
+            name="randomPlacement"
+            id="randomPlacement"
+            class="defaultCheckbox"
+          />
+          <label for="randomPlacement" class="checkbox__switch">
+            <div class="wrapper">
+              <div><p>Самостоятельно</p></div>
+              <div><p>Автоматически</p></div>
+            </div>
+            <div class="switch"></div>
+          </label>
+          <p class="subtitle">Тип автоматической расстановки</p>
+          <input
+            type="checkbox"
+            name="typeRandomPlacement"
+            id="typeRandomPlacement"
+            class="defaultCheckbox"
+          />
+          <label for="typeRandomPlacement" class="checkbox__switch">
+            <div id="typeRandomPlacement__on" class="wrapper">
+              <div><p>Многопалубные по краям</p></div>
+              <div><p>Случайная</p></div>
+            </div>
+            <div id="typeRandomPlacement__off" class="wrapper">
+              <p>Недоступно (самостоятельная расстановка)</p>
+            </div>
+            <div id="typeRandomPlacement__switch" class="switch"></div>
+          </label>
+          <p class="subtitle">Первый ход</p>
+          <input
+            type="checkbox"
+            name="firstMove"
+            id="firstMove"
+            class="defaultCheckbox"
+          />
+          <label for="firstMove" class="checkbox__switch">
+            <div class="wrapper">
+              <div><p>Противник</p></div>
+              <div><p>Вы</p></div>
+            </div>
+            <div class="switch"></div>
+          </label>
+          <p class="subtitle">
+            Удаление заведомо пустых клеток после попадания
+          </p>
+          <input
+            type="checkbox"
+            name="emptyCells"
+            id="emptyCells"
+            class="defaultCheckbox"
+          />
+          <label for="emptyCells" class="checkbox__switch">
+            <div class="wrapper">
+              <div><p>Нет</p></div>
+              <div><p>Да*</p></div>
+            </div>
+            <div class="switch colored"></div>
+          </label>
+          <p class="note">
+            * — при игре с ботом «Процент попаданий» на его поле заведомо пустые
+            клетки удалятся не будут: бот может в них попасть.
+          </p>
+          <button id="botSettings">Настроить бота</button>
+          <button id="submit">Старт</button>
+        </div>
+        <div id="botSettingsWindow">
+          <div class="title">
+            <p>Настройки бота</p>
+            <p><span class="gray">Морской бой «Матрица»</span></p>
+          </div>
+          <p class="subtitle">Тип расстановки</p>
+          <input
+            type="checkbox"
+            name="typeBotPlacement"
+            id="typeBotPlacement"
+            class="defaultCheckbox"
+          />
+          <label for="typeBotPlacement" class="checkbox__switch">
+            <div class="wrapper">
+              <div><p>Многопалубные по краям</p></div>
+              <div><p>Случайная</p></div>
+            </div>
+            <div class="switch"></div>
+          </label>
+          <p class="subtitle">Тип бота</p>
+          <input
+            type="checkbox"
+            name="botType"
+            id="botType"
+            class="defaultCheckbox"
+          />
+          <label for="botType" class="checkbox__switch">
+            <div class="wrapper">
+              <div><p>Процент попаданий</p></div>
+              <div><p>«Искусственный интеллект»</p></div>
+            </div>
+            <div class="switch"></div>
+          </label>
+          <form oninput="percentOfHitsOut.value = percentOfHits.valueAsNumber">
+            <p class="subtitle">
+              Фиксированный процент попаданий:
+              <span class="percentOfHits__on">
+                <output for="percentOfHits" name="percentOfHitsOut">20</output>%
+              </span>
+              <span class="percentOfHits__off gray">отключено</span>
+            </p>
+            <input
+              name="percentOfHits"
+              id="percentOfHits"
+              type="range"
+              min="0"
+              max="100"
+              value="20"
+              step="1"
+            />
+          </form>
+          <button id="globalSettings">Вернуться к общим настройкам</button>
+        </div>
+      </div>
+    </div>
+    <canvas id="game"></canvas>
   </body>
 </html>
